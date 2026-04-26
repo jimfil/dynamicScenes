@@ -1,7 +1,7 @@
 import laspy
 import numpy as np
 
-def readpoints(filename, year = 2016, test = False) :    
+def readpoints(filename, year = 2016, test = True) :    
     if test:
         las = laspy.read("data/"+ str(year) + "/test/" + filename)
     else:

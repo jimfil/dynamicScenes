@@ -10,7 +10,7 @@ import numpy as np
 import csv
 from pathlib import Path
 import time
-import readlazfiles as rl
+import src.readlazfiles as rl
 
 
 WIDTH = 1000

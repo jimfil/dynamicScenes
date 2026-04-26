@@ -7,8 +7,6 @@ def readpoints(filename, year = 2016, test = False) :
     else:
         las = laspy.read("data/"+ str(year) + "/val/" + filename)
     points = np.vstack((las.x, las.y, las.z)).transpose()
-    # # remove points with classification 2 (ground)
-    # points = points[las.classification != 2]
     return points
 
 def savepoints(filename,points):

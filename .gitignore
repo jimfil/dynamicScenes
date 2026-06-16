@@ -17,3 +17,18 @@ ENV/
 *.swp
 *.swo
 
+# LaTeX compilation auxiliary files
+*.aux
+*.log
+*.toc
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.blg
+*.bbl
+*.bcf
+*.run.xml
+*.lof
+*.lot
+*.pdf

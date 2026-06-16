@@ -32,8 +32,8 @@ class DynamicScenes(Scene3D_):
 
     # ================= INITIALIZATION =================
     def __init__(self,
-                 crop_percentage: int = 88,
-                 downsample_step: int = 15):
+                 crop_percentage: int = 60,
+                 downsample_step: int = 30):
         """Initialise the scene and pre-compute all expensive data.
 
         Parameters
@@ -735,8 +735,8 @@ class DynamicScenes(Scene3D_):
                                min_building_area: float = 8.0,
                                min_building_height: float = 1.0,
                                min_tree_height: float = 3.0,
-                               max_tree_area: float = 6.0,
-                               max_pole_width: float = 0.5,
+                               max_tree_area: float = 4.0,
+                               max_pole_width: float = 2.0,
                                min_pole_height: float = 1.5) -> list:
         """Euclidean cluster extraction (DBSCAN-style) with geometric categorization.
 
@@ -869,7 +869,7 @@ class DynamicScenes(Scene3D_):
             'building': (0.0, 0.9, 1.0, 1.0),    # cyan
             'tree':     (0.1, 0.9, 0.1, 1.0),    # green
             'pole':     (1.0, 1.0, 0.0, 1.0),    # yellow
-            'object':   (1.0, 0.5, 0.0, 1.0),    # orange
+            'object':   (1.0, 0.0, 0.0, 1.0),    # red
         }
         for i, (pts, category) in enumerate(clusters):
             color = CAT_COLOR.get(category, (1.0, 1.0, 1.0, 1.0))

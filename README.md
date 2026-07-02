@@ -1,98 +1,108 @@
-# Dynamic Scenes: 3D Point Cloud Change Detection, Alignment, and Spatial Partitioning
+# Dynamic Scenes: 3D Point Cloud Change Detection, Alignment, and Semantic Classification
 
-This repository contains a high-performance Python implementation of an end-to-end pipeline for 3D point cloud analysis, change detection, and geometric object classification. Developed as part of the "3D Computational Geometry and Vision" course in the Department of Electrical and Computer Engineering at the University of Patras, this project leverages spatial data structures and robust algorithms to analyze landscape-level differences between multi-epoch aerial LIDAR scans (specifically 2016 and 2020 datasets).
+This repository contains a high-performance Python implementation of an end-to-end pipeline for 3D point cloud analysis, change detection, and geometric object classification. Developed as part of the "3D Computational Geometry and Vision" course in the Department of Electrical and Computer Engineering at the University of Patras, this project leverages spatial data structures, multi-threaded GUI runtimes, and robust computational geometry algorithms.
 
-The pipeline incorporates advanced ground filtering, combined-cloud Iterative Closest Point (ICP) registration, recursive spatial partitions (KD-Trees, Octrees, and Quadtrees), geometric shape signature matching, and voxel-grid-accelerated Euclidean clustering for semantic classification.
-
----
-
-## Core Pipeline and Methodology
-
-### 1. Robust Ground Filtering
-To isolate above-ground structures (such as buildings, vegetation, and vehicles), the system implements a grid-based Local Minimum Filter:
-* **Cellular Discretization**: The horizontal (X-Y) plane is discretized into a regular grid of cells with user-defined spatial resolution.
-* **Elevation Analysis**: For each grid cell, the local minimum elevation (Z) is computed, providing an accurate, localized ground baseline.
-* **Adaptive Thresholding**: Points lying within a vertical clearance threshold above the cell's local minimum are flagged as ground and thinned. This approach handles steep slopes and uneven terrain far more reliably than global elevation percentiles.
-
-### 2. Registration and Alignment
-Multi-epoch point clouds can exhibit global translation and rotation offsets due to sensor coordinate differences or coordinate system discrepancies. The system resolves this via a two-stage registration process:
-* **Combined-Cloud PCA Warm-Start**: Principal Component Analysis (PCA) is performed on the combined set of points from both epochs. Points are rotated into a shared coordinate frame. Constraining the rotation strictly to the vertical (height) axis ensures that ground orientations remain consistent and prevents the eigenvector orientation flip common in independent PCA.
-* **Iterative Closest Point (ICP) Refinement**: Point-to-point SVD (Singular Value Decomposition) alignment is applied to register the source cloud (2016) onto the target reference cloud (2020). High-speed nearest-neighbor queries are executed via vectorised, batch-processed NumPy routines.
-
-### 3. Vectorised Point-Level Change Detection
-Once aligned, points from the 2016 and 2020 epochs are matched using distance-based thresholds:
-* **Static Points**: Points in the 2020 epoch that lie within a threshold distance of a point in the 2016 epoch.
-* **Added Points**: Points present in the 2020 epoch but missing from the 2016 epoch (representing new structures or objects).
-* **Removed Points**: Points present in the 2016 epoch but missing from the 2020 epoch (representing demolished structures or displaced objects).
-
-### 4. Hierarchical Spatial Partitioning
-The project implements three custom recursive spatial trees in the `src/` directory to structure and query the datasets:
-* **K-Dimensional Tree (KD-Tree)**: Built recursively by splitting points at the median along alternating coordinate axes. Supports exact/approximate Nearest Neighbor search, exact K-Nearest Neighbors (k-NN) via max-heaps, and Spherical Range Search.
-* **Octree**: A 3D spatial partitioning tree where nodes with counts exceeding the maximum capacity are split recursively into eight child octants. Used for volumetric change detection.
-* **Quadtree**: A 2D spatial partitioning tree operating on the horizontal plane. Nodes are split recursively into four quadrant children. Used for top-down spatial change queries.
-
-### 5. Advanced Geometric Shape Matching
-Instead of simple point-count comparisons, the system evaluates structural changes using advanced geometric criteria:
-* **PCA Eigenvalue Signature**: For each leaf node in the spatial trees, the local covariance matrix is computed. The three sorted eigenvalues are normalized to sum to 1. This three-element descriptor compactly represents whether the local shape is linear, planar, or volumetric. Significant differences in eigenvalue signatures indicate structural morphology changes.
-* **Directed Hausdorff Distance**: The directed Hausdorff distance between corresponding leaf nodes in two epochs is approximated using batch vectorised pairwise distance operations. Substantial shifts in physical locations flag a node as changed.
-
-### 6. Voxel-Grid Euclidean Clustering and Classification
-To segment individual dynamic objects and identify their types, the pipeline processes the point sets using:
-* **Accelerated Euclidean Clustering**: A custom DBSCAN-like algorithm. To avoid the O(N^2) complexity of pairwise distances, a voxel-grid spatial index maps points to 3D bins. Radius queries only inspect adjacent 27 voxels, reducing clustering time to near-linear complexity.
-* **Geometric Bounding Box Heuristics**: Extracted clusters are classified into four distinct categories based on their 3D extents:
-  * **Building**: High horizontal footprint area and moderate-to-high vertical height.
-  * **Tree**: Moderate-to-high vertical height combined with a compact horizontal footprint area.
-  * **Pole/Mast**: Extremely narrow horizontal footprint and distinct vertical height.
-  * **Object**: General structures and clutter that do not match the above signatures.
+The pipeline is split into two primary operational modes:
+1. **Dynamic PCD Sequence Player**: Animates continuous frame-by-frame point cloud sequences (e.g., from moving vehicle lidars) to run height-coloring and frame-to-frame change detection.
+2. **Static LIDAR**: Analyzes multi-epoch scans (2016 and 2020 LIDAR epochs).
 
 ---
 
-## Project Structure
+## Architecture and Design
+
+To ensure optimal responsiveness and clean architecture, the repository has been fully modularized:
+
+### 1. Decoupled Multi-threaded Execution (`workers.py`)
+To prevent heavy CPU computations (file I/O, ego-motion matrix calculations, ground grid filtering, and DBSCAN clustering) from freezing the visualizer's rendering context, calculations are offloaded to an asynchronous background `FrameProcessingWorker` (`QThread`). The main thread remains dedicated to drawing and interacting with the scene at a smooth **60 FPS**, receiving processed datasets via thread-safe PyQt signals.
+
+### 2. In-Memory Circular Buffering (`loaders.py`)
+When playing dynamic sequences, reading large coordinate files from disk continuously introduces I/O latency. The `PCDSequenceLoader` maintains a size-bounded, FIFO cache (max size 30) in RAM. Previously read frames are served instantly, enabling smooth, stutter-free animation loops.
+
+### 3. Voxel-Grid Spatial Partitioning DBSCAN (`pipeline.py`)
+In order to segment structures in real-time, we implement a custom DBSCAN algorithm. Space is discretized into a 3D grid of size $\epsilon$ (voxels). This way, nearest-neighbor searches only evaluate points within the cell and its 26 immediate neighbor voxels, scaling clustering queries to $O(N)$ linear complexity.
+
+### 4. Interactive PyQt Control Panel
+Both visualizers feature an interactive side control panel, exposing:
+* **Interactive Checkboxes**: Toggle the visibility of Buildings, Trees, Poles, and general Objects layers dynamically.
+* **Single-Cluster Focus Selector**: A combo box that automatically populates with all clusters found in the current frame, allowing the user to select and isolate a single object in the 3D space.
+
+---
+
+## Directory Structure
 
 ```
 ├── Data/
-│   ├── 2016/                         # 2016 LIDAR datasets (.laz format)
-│   └── 2020/                         # 2020 LIDAR datasets (.laz format)
-├── documentation/                    # Documentation, HTML assets, and user guide
+│   ├── pcd/                          # Calibration CSV and PCD frame sequences
+│   └── laz/                          # Aerial LIDAR datasets (.laz format)
+├── documentation/                    # HTML guides and visualization documentation
 ├── src/
-│   ├── kdnode.py                     # Recursive KD-Tree implementation and spatial queries
-│   ├── octnode.py                    # Octree implementation for volumetric subdivision
-│   ├── quadnode.py                   # Quadtree implementation for horizontal spatial tracking
-│   └── readlazfiles.py               # Helper utility to read and parse .laz LIDAR files
-├── vvrpywork/                        # 3D visualization and UI engine
-├── dynamicScenes.py                  # Main execution script, visualization controller, and algorithms
-├── README.md                         # Project documentation
-└── Project_4_2026.pdf                # Course project guidelines and specifications
+│   ├── geometry_utils.py             # Math helpers (SVD-based ICP, PCA, transform matrices, scaling)
+│   ├── pipeline.py                   # Preprocessing (ground filter, difference vectors, DBSCAN)
+│   ├── loaders.py                    # Data loader classes for PCD and LIDAR sequences
+│   ├── workers.py                    # Asynchronous PyQt FrameProcessingWorker thread
+│   ├── readpcdfiles.py               # Low-level ASCII/Binary PCD file parser
+│   ├── readlazfiles.py               # laz/las parsing utility wrapper
+│   ├── kdnode.py                     # Custom recursive KD-Tree implementation
+│   ├── octnode.py                    # Custom recursive Octree implementation
+│   └── quadnode.py                   # Custom recursive Quadtree implementation
+├── vvrpywork/                        # 3D PyVistaqt window engine wrappers
+├── dynamicScenes.py                  # CLI argparse router and DynamicSceneViewer class
+└── Project_4_2026.pdf                # Course specification sheet
 ```
 
 ---
 
-## Installation and Setup
+## Installation and Requirements
 
 ### Prerequisites
-Ensure you have Python 3.12 or newer installed.
+* **Python**: Version 3.10 to 3.12 is recommended.
+* **Anaconda Environment**: Setting up a dedicated environment is highly recommended.
 
-### Dependencies
-Install the required packages using pip:
+### Package Installation
+Install dependencies via pip:
 ```bash
-pip install numpy laspy lazrs
+pip install numpy scipy laspy lazrs pyvista pyvistaqt PyQt5
 ```
-Note: `lazrs` is required as a decompression backend to parse `.laz` format point clouds using `laspy`.
+> Note: `lazrs` is required to allow `laspy` to decompress and parse `.laz` datasets.
 
 ---
 
-## Usage and Interactive Controls
+## Usage and CLI Routing
 
-To execute the project and launch the interactive 3D visualizer:
+The main script (`dynamicScenes.py`) uses `argparse` to inspect arguments. It dynamically routes the input based on the number and format of the files specified:
+
+### 1. Launch PCD Sequence Viewer (Default)
+Runs sequence loading and animates sequential frames:
 ```bash
 python dynamicScenes.py
 ```
+*Alternatively, supply a custom calibration file:*
+```bash
+python dynamicScenes.py Data/pcd/calibration.csv
+```
 
-Upon startup, the script performs the initial grid-based ground filtering, combined-cloud PCA projection, and SVD-based ICP alignment. Once the preprocessing phase is complete, a 3D rendering window will open.
+### 2. Launch Aerial LIDAR Change Viewer
+Runs registration and compares custom multi-epoch topography (supply 2 files):
+```bash
+python dynamicScenes.py Data/laz/2016.laz Data/laz/2020.laz
+```
 
-You can switch between different analysis tasks and visualization modes using the keyboard:
+---
 
-* **Key 1 (or Numpad 1)**: Renders the dynamic scene classification. Static points are clustered and categorized into buildings (cyan), trees (green), poles (yellow), and objects (orange), while raw added (green) and removed (red) points are rendered directly.
-* **Key 2 (or Numpad 2)**: Renders raw scene differences. Static points are colorized continuously by elevation (Y-axis), added points are colored red, and removed points are colored blue.
-* **Key 3 (or Numpad 3)**: Renders volumetric change detection using Octrees. The visualizer overlays generalized transparent bounding boxes over the three-dimensional regions where changes were detected.
-* **Key 4 (or Numpad 4)**: Renders horizontal change detection using Quadtrees. The visualizer draws vertical columns enclosing sections of spatial horizontal change.
+## Interactive Controls Reference
+
+### 1. PCD Dynamic Scene Controls
+* **Key `1`**: Switch to **Raw Height Mode** (height-gradient colorization).
+* **Key `2`**: Switch to **Change Detection Mode** (Green: points added, Red: points removed, Grey: static).
+* **Key `3`**: Switch to **Semantic Classification Mode** (Cyan: buildings, Green: vegetation/trees, Yellow: poles, Orange: objects).
+* **Key `SPACE`**: Toggle play/pause animation playback. *(Pressing SPACE in Classification mode automatically reverts back to Raw mode to maintain animation speed).*
+* **Key `N` / `P`**: Step Forward / Backward by one frame.
+* **Key `R`**: Reset sequence playback to Frame 1.
+
+### 2. Aerial LIDAR Viewer Controls
+* **Key `1`**: **KD-Tree Dynamic Objects**. Computes vectorized nearest-neighbor checks to find changes, and groups static points into classified clusters.
+* **Key `2`**: **Raw Differences**. Static points are colored by elevation, added points are green, and removed points are red.
+* **Key `3`**: **Octree Volumetric Subdivision**. Visualizes volumetric modifications using transparent general bounding box grids.
+* **Key `4`**: **Quadtree Horizontal Subdivision**. Visualizes modifications using vertical projection columns.
+
+*Use the checkboxes and drop-down menu on the left side of the window to filter layers and isolate specific clusters in both modes.*

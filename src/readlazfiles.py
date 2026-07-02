@@ -1,16 +1,13 @@
 import laspy
 import numpy as np
 
-def readpoints(filename, year = 2016, test = True) :    
-    if test:
-        las = laspy.read("data/"+ str(year) + "/test/" + filename)
-    else:
-        las = laspy.read("data/"+ str(year) + "/val/" + filename)
+def readpoints(filepath):    
+    las = laspy.read(filepath)
     points = np.vstack((las.x, las.y, las.z)).transpose()
     return points
 
-def savepoints(filename,points):
-    np.savetxt("data/"+filename,points, delimiter=",")
+def savepoints(filepath, points):
+    np.savetxt(filepath, points, delimiter=",")
 
 
 if __name__ == "__main__":

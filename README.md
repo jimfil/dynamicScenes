@@ -67,42 +67,40 @@ pip install numpy scipy laspy lazrs pyvista pyvistaqt PyQt5
 
 ---
 
-## Usage and CLI Routing
+## Usage and Control Panel
 
-The main script (`dynamicScenes.py`) uses `argparse` to inspect arguments. It dynamically routes the input based on the number and format of the files specified:
+The main application (`dynamicScenes.py`) features a unified GUI with an interactive side control panel, allowing you to load, switch, and visualize different point cloud datasets dynamically without restarting the application:
 
-### 1. Launch PCD Sequence Viewer (Default)
-Runs sequence loading and animates sequential frames:
+### 1. Launch the Application (Recommended)
+Starts the application. By default, it loads the PCD Sequence dataset:
 ```bash
 python dynamicScenes.py
 ```
-*Alternatively, supply a custom calibration file:*
-```bash
-python dynamicScenes.py Data/pcd/calibration.csv
-```
+From the sidebar GUI, you can use the **Dataset** dropdown menu to switch dynamically to the **Aerial LIDAR Comparison** dataset at any time.
 
-### 2. Launch Aerial LIDAR Change Viewer
-Runs registration and compares custom multi-epoch topography (supply 2 files):
-```bash
-python dynamicScenes.py Data/laz/2016.laz Data/laz/2020.laz
-```
+### 2. Launch directly with CLI Arguments
+If you prefer starting the app pre-loaded with custom files, the argparse interface routes the input based on the arguments supplied:
+* **Custom PCD sequence (1 argument)**: Supply a custom calibration CSV:
+  ```bash
+  python dynamicScenes.py Data/pcd/calibration.csv
+  ```
+* **Custom LIDAR comparison (2 arguments)**: Supply two `.laz` or `.las` files:
+  ```bash
+  python dynamicScenes.py Data/laz/2016.laz Data/laz/2020.laz
+  ```
 
 ---
 
 ## Interactive Controls Reference
 
-### 1. PCD Dynamic Scene Controls
+The hotkeys are unified across all datasets:
 * **Key `1`**: Switch to **Raw Height Mode** (height-gradient colorization).
-* **Key `2`**: Switch to **Change Detection Mode** (Green: points added, Red: points removed, Grey: static).
+* **Key `2`**: Switch to **Change Detection Mode** (Green: added points, Red: removed points, Grey: static).
 * **Key `3`**: Switch to **Semantic Classification Mode** (Cyan: buildings, Green: vegetation/trees, Yellow: poles, Orange: objects).
-* **Key `SPACE`**: Toggle play/pause animation playback. *(Pressing SPACE in Classification mode automatically reverts back to Raw mode to maintain animation speed).*
+* **Key `4`**: Switch to **Octree Volumetric Subdivision** (visualizes changes using 3D bounding boxes).
+* **Key `5`**: Switch to **Quadtree Horizontal Subdivision** (visualizes changes using 2D projection columns).
+* **Key `SPACE`**: Toggle play/pause animation playback *(PCD sequence only)*.
 * **Key `N` / `P`**: Step Forward / Backward by one frame.
 * **Key `R`**: Reset sequence playback to Frame 1.
 
-### 2. Aerial LIDAR Viewer Controls
-* **Key `1`**: **KD-Tree Dynamic Objects**. Computes vectorized nearest-neighbor checks to find changes, and groups static points into classified clusters.
-* **Key `2`**: **Raw Differences**. Static points are colored by elevation, added points are green, and removed points are red.
-* **Key `3`**: **Octree Volumetric Subdivision**. Visualizes volumetric modifications using transparent general bounding box grids.
-* **Key `4`**: **Quadtree Horizontal Subdivision**. Visualizes modifications using vertical projection columns.
-
-*Use the checkboxes and drop-down menu on the left side of the window to filter layers and isolate specific clusters in both modes.*
+*Use the checkboxes and drop-down menu on the left side of the window to filter layers and isolate specific clusters.*

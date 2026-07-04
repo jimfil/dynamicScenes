@@ -49,11 +49,11 @@ class PCDSequenceLoader:
         if not filepath.exists():
             raise FileNotFoundError(f"PCD file not found at {filepath}")
             
-        raw_pts = rp.read_pcd_points(str(filepath))
+        pts = rp.read_pcd_points(str(filepath))
         
         # Preprocess frame points
         # 1. Filter out ego-reflections
-        pts = remove_reflections(raw_pts, threshold=2.0)
+        pts = remove_reflections(pts, threshold=2.0)
         
         # 2. Homogeneous transformation (local sensor frame -> global map frame)
         if len(pts) > 0:

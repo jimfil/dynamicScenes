@@ -9,7 +9,7 @@ import numpy as np
 import time
 import argparse
 from pathlib import Path
-from PyQt5.QtWidgets import QCheckBox, QComboBox, QLabel
+from PyQt5.QtWidgets import QCheckBox, QComboBox, QLabel, QFrame
 
 from src.loaders import PCDSequenceLoader, LIDARSequenceLoader
 from src.workers import FrameProcessingWorker
@@ -61,6 +61,25 @@ class DynamicSceneViewer(Scene3D_):
             
         left_layout = left_widget.layout()
         
+        # Dataset Selector
+        dataset_label = QLabel("<b>Dataset:</b>")
+        left_layout.addWidget(dataset_label)
+        self.dataset_combo = QComboBox()
+        self.dataset_combo.addItem("Dynamic PCD Sequence")
+        self.dataset_combo.addItem("Aerial LIDAR Comparison")
+        
+        initial_idx = 1 if isinstance(self.loader, LIDARSequenceLoader) else 0
+        self.dataset_combo.blockSignals(True)
+        self.dataset_combo.setCurrentIndex(initial_idx)
+        self.dataset_combo.blockSignals(False)
+        self.dataset_combo.currentIndexChanged.connect(self.on_dataset_changed)
+        left_layout.addWidget(self.dataset_combo)
+        
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        left_layout.addWidget(line)
+        
         self.print("Controls:\n")
         
         header = QLabel("<b>Filter Categories:</b>")
@@ -96,6 +115,31 @@ class DynamicSceneViewer(Scene3D_):
         self.cluster_combo.addItem("All Clusters")
         self.cluster_combo.currentIndexChanged.connect(self.update_task_visibility)
         left_layout.addWidget(self.cluster_combo)
+
+    def on_dataset_changed(self, index):
+        if self.is_processing:
+            self.dataset_combo.blockSignals(True)
+            self.dataset_combo.setCurrentIndex(1 - index)
+            self.dataset_combo.blockSignals(False)
+            return
+
+        for name in list(self._shapeDict.keys()):
+            self.removeShape(name)
+
+        self.frame_idx = 1
+
+        if index == 0:
+            self.loader = PCDSequenceLoader()
+            self.viewer_mode = "raw"
+            self.num_frames = self.loader.get_num_frames()
+            print("Switched dynamically to Dynamic PCD Sequence.")
+        else:
+            self.loader = LIDARSequenceLoader()
+            self.viewer_mode = "compare"
+            self.num_frames = self.loader.get_num_frames()
+            print("Switched dynamically to Aerial LIDAR Comparison.")
+
+        self.load_and_display_frame(self.frame_idx)
 
     def update_task_visibility(self):
         show_buildings = self.cb_buildings.isChecked()

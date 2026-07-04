@@ -10,15 +10,18 @@ def remove_reflections(pts: np.ndarray, threshold: float = 2.0) -> np.ndarray:
     return pts[local_dist > threshold]
 
 def remove_ground_grid(pts: np.ndarray, grid_size: float = 5.0, z_threshold: float = 0.4) -> np.ndarray:
-    """Grid-based Local Minimum Filter for robust ground removal.
+    """Grid-based Local Minimum/Percentile Filter for robust ground removal.
     Divides the X-Y plane into a regular grid of cells of side ``grid_size``.
-    For each cell the lowest Z value (local ground estimate) is found. Any
-    point that lies within ``z_threshold`` metres of that local minimum is
-    considered ground and discarded.
+    For each cell, the local ground Z is estimated. If a cell contains no ground
+    (local minimum is significantly higher than global ground level), the local
+    ground is set to the global ground to prevent building facade slicing.
     """
     if len(pts) == 0:
         return pts
     x, y, z = pts[:, 0], pts[:, 1], pts[:, 2]
+
+    # Compute dynamic global ground level (2nd percentile to ignore noise)
+    global_ground_z = np.percentile(z, 2.0)
 
     # Discretise X and Y into integer cell indices
     x_idx = np.floor((x - x.min()) / grid_size).astype(np.int32)
@@ -28,11 +31,17 @@ def remove_ground_grid(pts: np.ndarray, grid_size: float = 5.0, z_threshold: flo
     n_cols = int(x_idx.max()) + 1
     cell_key = y_idx * n_cols + x_idx  # unique integer per cell
 
-    # For every point compute the minimum Z in its cell
+    # For every point compute the percentile Z in its cell
     unique_keys, inverse = np.unique(cell_key, return_inverse=True)
     cell_min_z = np.zeros(len(unique_keys), dtype=np.float32)
     for k in range(len(unique_keys)):
-        cell_min_z[k] = z[inverse == k].min()
+        cell_z = z[inverse == k]
+        local_min = np.percentile(cell_z, 5.0)
+        # If the cell's lowest point is significantly above the global ground, it is a groundless cell!
+        if local_min > global_ground_z + 1.5:
+            cell_min_z[k] = global_ground_z
+        else:
+            cell_min_z[k] = local_min
 
     # Map back: each point gets its cell's minimum Z
     local_ground_z = cell_min_z[inverse]

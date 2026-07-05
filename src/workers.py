@@ -51,14 +51,16 @@ class FrameProcessingWorker(QThread):
                     })
                 else:
                     # Classify mode
-                    clusters = cluster_and_categorize(static, eps=0.8, min_points=15)
+                    clusters = cluster_and_categorize(static, eps=0.6, min_points=15)
                     self.result_ready.emit({
                         "success": True,
                         "mode": "classify",
                         "index": self.frame_idx,
                         "clusters": clusters,
                         "added": added,
-                        "removed": removed
+                        "removed": removed,
+                        "static": static,
+                        "raw": pts_curr
                     })
                     
             elif self.pcd_mode in ["octree", "quadtree"]:
@@ -132,5 +134,89 @@ class FrameProcessingWorker(QThread):
                 "index": self.frame_idx,
                 "error": str(e)
             })
+
+
+class SequencePrecomputer(QThread):
+    frame_done = pyqtSignal(int)
+
+    def __init__(self, loader, viewer):
+        super().__init__()
+        self.loader = loader
+        self.viewer = viewer
+        self.num_frames = loader.get_num_frames()
+
+    def run(self):
+        pts_prev = None
+        for idx in range(1, self.num_frames + 1):
+            try:
+                pts_curr, _ = self.loader.load_raw_frame(idx)
+                if idx == 1:
+                    pts_prev = pts_curr
+
+                # 1. Change detection
+                static, added, removed = compare_scenes(pts_prev, pts_curr, threshold=1.0)
+                colors_raw = color_points_by_height(pts_curr)
+                colors_static = color_points_by_height(static)
+
+                # 2. DBSCAN Clustering
+                clusters = cluster_and_categorize(static, eps=0.6, min_points=15)
+
+                # 3. Dynamic Track Association (tightened 4.0m limit)
+                associated_clusters = self.associate_tracks(clusters, idx)
+
+                # 4. Save to global cache
+                self.viewer.frame_data_cache[idx] = {
+                    "raw": pts_curr,
+                    "colors_raw": colors_raw,
+                    "static": static,
+                    "colors_static": colors_static,
+                    "added": added,
+                    "removed": removed,
+                    "clusters": associated_clusters
+                }
+
+                pts_prev = pts_curr
+                self.frame_done.emit(idx)
+                if idx % 50 == 0 or idx == self.num_frames:
+                    print(f"Background pre-caching progress: {idx}/{self.num_frames} frames processed.")
+            except Exception as e:
+                import traceback
+                print(f"Error precomputing frame {idx}: {e}")
+                traceback.print_exc()
+
+    def associate_tracks(self, clusters, frame_idx):
+        associated = []
+        for cluster_pts, category in clusters:
+            centroid = cluster_pts.mean(axis=0)
+            best_track_id = -1
+            min_dist = float('inf')
+
+            # Find closest active track of the same category
+            for track_id, track_info in self.viewer.global_tracks.items():
+                if track_info["category"] != category:
+                    continue
+                dist = float(np.linalg.norm(centroid - track_info["last_centroid"]))
+                if dist < min_dist and dist < 4.0:  # Tightened tracking distance
+                    if track_info["last_seen_frame"] < frame_idx:
+                        best_track_id = track_id
+                        min_dist = dist
+
+            if best_track_id != -1:
+                # Update existing track
+                self.viewer.global_tracks[best_track_id]["last_centroid"] = centroid
+                self.viewer.global_tracks[best_track_id]["last_seen_frame"] = frame_idx
+                track_id = best_track_id
+            else:
+                # Create a new track
+                track_id = self.viewer.next_track_id
+                self.viewer.global_tracks[track_id] = {
+                    "category": category,
+                    "last_centroid": centroid,
+                    "last_seen_frame": frame_idx
+                }
+                self.viewer.next_track_id += 1
+
+            associated.append((cluster_pts, category, track_id))
+        return associated
 
 

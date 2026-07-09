@@ -1,0 +1,4 @@
+#dependencies not included in vvrpywork
+scipy
+laspy
+lazrs

@@ -18,8 +18,8 @@ import src.octnode as octN
 import src.quadnode as quadN
 from src.geometry_utils import compare_trees
 
-WIDTH = 1000
-HEIGHT = 800
+WIDTH = 1920
+HEIGHT = 1050
 
 class DynamicSceneViewer(Scene3D_):
     COLOR_ADDED = (0.0, 1.0, 0.0, 1.0)      # Green
@@ -100,6 +100,21 @@ class DynamicSceneViewer(Scene3D_):
         self.dataset_combo.currentIndexChanged.connect(self.on_dataset_changed)
         left_layout.addWidget(self.dataset_combo)
         
+        # Apply Shift Checkbox
+        self.apply_shift_checkbox = QCheckBox("Apply Dataset Shift (15m)")
+        self.apply_shift_checkbox.setChecked(False)
+        self.apply_shift_checkbox.stateChanged.connect(self.on_lidar_settings_changed)
+        is_lidar = isinstance(self.loader, LIDARSequenceLoader)
+        self.apply_shift_checkbox.setEnabled(is_lidar)
+        left_layout.addWidget(self.apply_shift_checkbox)
+        
+        # Bypass ICP Checkbox
+        self.bypass_icp_checkbox = QCheckBox("Bypass ICP Alignment")
+        self.bypass_icp_checkbox.setChecked(False)
+        self.bypass_icp_checkbox.stateChanged.connect(self.on_lidar_settings_changed)
+        self.bypass_icp_checkbox.setEnabled(is_lidar)
+        left_layout.addWidget(self.bypass_icp_checkbox)
+        
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
@@ -169,11 +184,21 @@ class DynamicSceneViewer(Scene3D_):
             self.loader = PCDSequenceLoader()
             self.viewer_mode = "raw"
             self.num_frames = self.loader.get_num_frames()
+            self.bypass_icp_checkbox.setEnabled(False)
+            self.bypass_icp_checkbox.blockSignals(True)
+            self.bypass_icp_checkbox.setChecked(False)
+            self.bypass_icp_checkbox.blockSignals(False)
+            self.apply_shift_checkbox.setEnabled(False)
+            self.apply_shift_checkbox.blockSignals(True)
+            self.apply_shift_checkbox.setChecked(False)
+            self.apply_shift_checkbox.blockSignals(False)
             print("Switched dynamically to Dynamic PCD Sequence.")
         else:
             self.loader = LIDARSequenceLoader()
             self.viewer_mode = "compare"
             self.num_frames = self.loader.get_num_frames()
+            self.bypass_icp_checkbox.setEnabled(True)
+            self.apply_shift_checkbox.setEnabled(True)
             print("Switched dynamically to Aerial LIDAR Comparison.")
 
         # Re-start precomputer
@@ -188,6 +213,32 @@ class DynamicSceneViewer(Scene3D_):
         self.category_focus_combo.blockSignals(False)
         self.rebuild_object_combo()
 
+        self.load_and_display_frame(self.frame_idx)
+
+    def on_lidar_settings_changed(self):
+        if not isinstance(self.loader, LIDARSequenceLoader):
+            return
+            
+        bypass = self.bypass_icp_checkbox.isChecked()
+        shift = self.apply_shift_checkbox.isChecked()
+        print(f"LIDAR settings changed: Shift={shift}, Bypass ICP={bypass}")
+        
+        if hasattr(self, "precomputer") and self.precomputer.isRunning():
+            self.precomputer.terminate()
+            self.precomputer.wait()
+            
+        for name in list(self._shapeDict.keys()):
+            self.removeShape(name)
+            
+        self.frame_idx = 1
+        self.frame_data_cache.clear()
+        self.loader.prealign_data(bypass_icp=bypass, apply_shift=shift)
+        
+        from src.workers import SequencePrecomputer
+        self.precomputer = SequencePrecomputer(self.loader, self)
+        self.precomputer.frame_done.connect(self.on_frame_precomputed)
+        self.precomputer.start()
+        
         self.load_and_display_frame(self.frame_idx)
 
     def on_focus_category_changed(self):

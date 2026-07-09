@@ -90,13 +90,16 @@ class LIDARSequenceLoader:
         self.cache = {}
         self.prealign_data()
         
-    def prealign_data(self):
-        print("LIDAR: Pre-loading and aligning epochs (once)...")
+    def prealign_data(self, bypass_icp=False, apply_shift=False):
+        print(f"LIDAR: Pre-loading and aligning epochs")
         # 1. Load raw datasets
         pts1 = rl.readpoints(self.file2016)
         pts2 = rl.readpoints(self.file2020)
         pts1 = np.array(pts1, dtype=np.float32)
         pts2 = np.array(pts2, dtype=np.float32)
+        # Shift the 2020 epoch points to verify PCA/ICP alignment correctness
+        if apply_shift:
+            pts2 += np.array([15.0, 5.0, -10.0], dtype=np.float32)
         
         # 2. Ground grid removal
         pts1_clean = remove_ground_grid(pts1, grid_size=5.0, z_threshold=0.4)
@@ -126,7 +129,11 @@ class LIDARSequenceLoader:
         pts2_ds = pts2_reordered[::step]
         
         # 6. SVD-based ICP alignment
-        pts1_aligned = icp_align(pts1_ds, pts2_ds, max_iterations=20, tolerance=1e-4)
+        if bypass_icp:
+            print("  Bypassing SVD-ICP alignment as requested.")
+            pts1_aligned = pts1_ds
+        else:
+            pts1_aligned = icp_align(pts1_ds, pts2_ds, max_iterations=20, tolerance=1e-4)
         
         # 7. PCA transform
         mean, R = pca_transform(pts2_ds)
